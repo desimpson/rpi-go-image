@@ -64,6 +64,9 @@ fi
 
 ok="${tmp}/ok"
 prepare_root "${ok}"
+mkdir -p "${ok}/etc/systemd/system/getty.target.wants"
+ln -s /lib/systemd/system/getty@.service \
+    "${ok}/etc/systemd/system/getty.target.wants/getty@tty1.service"
 link="${ok}/etc/systemd/system/multi-user.target.wants/myapp.service"
 
 # Act
@@ -83,9 +86,19 @@ gadget="${ok}/etc/systemd/system/sysinit.target.wants/usb-gadget.service"
 if [ "$(readlink "$gadget")" != "../usb-gadget.service" ]; then
     fail "usb-gadget service was not enabled"
 fi
-getty="${ok}/etc/systemd/system/getty.target.wants/serial-getty@ttyGS0.service"
-if [ "$(readlink "$getty")" != "/usr/lib/systemd/system/serial-getty@.service" ]; then
-    fail "USB serial getty was not enabled"
+if [ -e "${ok}/etc/systemd/system/getty.target.wants/getty@tty1.service" ]; then
+    fail "HDMI getty was left enabled"
+fi
+if [ -e "${ok}/etc/systemd/system/getty.target.wants/serial-getty@ttyGS0.service" ]; then
+    fail "USB serial getty was enabled"
+fi
+generator="${ok}/etc/systemd/system-generators/systemd-getty-generator"
+if [ "$(readlink "$generator")" != "/dev/null" ]; then
+    fail "getty generator was not masked"
+fi
+dropin="${ok}/usr/lib/systemd/system/getty@.service.d/buildroot-console.conf"
+if ! grep -qx 'DefaultInstance=' "$dropin"; then
+    fail "getty default instance was not cleared"
 fi
 networkd="${ok}/etc/systemd/system/multi-user.target.wants/systemd-networkd.service"
 if [ "$(readlink "$networkd")" != "/usr/lib/systemd/system/systemd-networkd.service" ]; then

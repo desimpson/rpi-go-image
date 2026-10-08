@@ -1,9 +1,17 @@
 [Unit]
-Description=MyApp demo Go service
+Description=Demo serial CLI
+After=usb-gadget.service
+Requires=usb-gadget.service
 
 [Service]
 Type=simple
 ExecStart=/usr/bin/myapp
+StandardInput=tty
+StandardOutput=tty
+StandardError=journal
+TTYPath=/dev/ttyGS0
+TTYReset=yes
+TTYVHangup=yes
 Restart=always
 RestartSec=2
 

@@ -29,9 +29,20 @@ mkdir -p "${TARGET_DIR}/etc/systemd/system/sysinit.target.wants"
 ln -sf ../usb-gadget.service \
     "${TARGET_DIR}/etc/systemd/system/sysinit.target.wants/usb-gadget.service"
 
-mkdir -p "${TARGET_DIR}/etc/systemd/system/getty.target.wants"
-ln -sf /usr/lib/systemd/system/serial-getty@.service \
+# The Pi board script enables an HDMI login prompt, and systemd's default
+# instance is tty1. This image has no login prompt: myapp is the USB serial
+# console. Clear DefaultInstance before preset-all, or tty1 comes back.
+rm -f \
+    "${TARGET_DIR}/etc/systemd/system/getty.target.wants/getty@tty1.service" \
+    "${TARGET_DIR}/etc/systemd/system/getty.target.wants/serial-getty@ttyAMA0.service" \
     "${TARGET_DIR}/etc/systemd/system/getty.target.wants/serial-getty@ttyGS0.service"
+rm -f "${TARGET_DIR}/usr/lib/systemd/system/serial-getty@.service.d/buildroot-console.conf"
+mkdir -p "${TARGET_DIR}/usr/lib/systemd/system/getty@.service.d"
+printf '%s\n' '[Install]' 'DefaultInstance=' \
+    > "${TARGET_DIR}/usr/lib/systemd/system/getty@.service.d/buildroot-console.conf"
+mkdir -p "${TARGET_DIR}/etc/systemd/system-generators"
+ln -sf /dev/null \
+    "${TARGET_DIR}/etc/systemd/system-generators/systemd-getty-generator"
 
 ln -sf /usr/lib/systemd/system/systemd-networkd.service \
     "${TARGET_DIR}/etc/systemd/system/multi-user.target.wants/systemd-networkd.service"

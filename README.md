@@ -4,8 +4,8 @@ A minimal [Buildroot](https://buildroot.org) Linux image for the **Raspberry Pi 
 that boots straight into a Go application running as a **systemd** service.
 GitHub Actions builds the SD card image and publishes it as a download.
 
-The demo app (`app/`) blinks the green ACT LED once a second and logs a heartbeat to the journal,
-so you can tell it works without a screen or serial cable.
+The demo app (`app/`) is the console. It starts on the USB serial port at boot, with no login prompt.
+From that prompt you can turn the green ACT LED on, off, or blink it.
 
 ## Get an image
 
@@ -21,18 +21,36 @@ git tag v0.1.0 && git push --tags
 (balenaEtcher also takes `.xz` directly). Don't use Imager's OS customisation (Wi-Fi/SSH/user) options;
 they only apply to Raspberry Pi OS images.
 
-**Boot it:** the ACT LED will blink at 1 Hz once the service is running (a few seconds after the
-kernel starts; the Pi Zero is slow, ~10-20 s total).
+**Boot it:** plug a data cable into the micro-USB port marked **USB** (not **PWR**). After the
+Pi Zero boots (~10-20 s) the computer sees `/dev/ttyACM0`. Open it at 115200 baud and you are
+already at the `myboard>` prompt.
+
+```sh
+picocom -b 115200 /dev/ttyACM0
+```
+
+Leave picocom with **Ctrl+A** then **Ctrl+X**.
+
+```
+myboard <version>
+type help
+myboard> help
+myboard> led blink
+myboard> led off
+myboard> exit
+```
+
+`exit` ends the session and prints the banner again. It does not stop the service. There is no
+login prompt on the serial port, HDMI, or the UART header.
 
 ## Logging in
 
-Root login is `root` / `changeme` (set in `external/configs/myboard_defconfig`; change it).
+SSH is a normal root shell, separate from the serial CLI. The password is `changeme`
+(set in `external/configs/myboard_defconfig`; change it).
 
 | Console | Where |
 |---|---|
-| HDMI | tty1, USB keyboard |
-| UART | GPIO 14/15, 115200 baud |
-| USB serial | the Pi's **USB** micro-USB port (not **PWR**), appears as `/dev/ttyACM0` on the computer |
+| USB serial | the demo CLI, on the Pi's **USB** port, `/dev/ttyACM0` on the computer |
 | SSH | `ssh root@192.168.7.2` over the USB Ethernet interface |
 
 The USB port is one device with two functions: a serial port (`ttyGS0` on the Pi) and an Ethernet interface (`usb0`, address `192.168.7.2/24`). The Pi offers DHCP on that link and does not advertise itself as a default router. The computer should receive `192.168.7.1`.
@@ -62,7 +80,7 @@ rebuilds after changing only the Go app take a minute or two.
 | `external/configs/myboard_defconfig` | Buildroot's stock `raspberrypi0_defconfig` plus systemd, hostname, root password, overlay, ccache, and Dropbear. |
 | `external/board/config.txt` | Boot config. Loads the `dwc2` USB peripheral overlay. |
 | `external/board/overlay/` | Files copied into the rootfs: `myapp`, the USB gadget service, and the `usb0` network config. |
-| `external/board/post-build.sh` | Enables `myapp`, the USB gadget, the USB serial getty, networkd, and Dropbear. Fails the build if the binary or unit file is missing. |
+| `external/board/post-build.sh` | Enables `myapp`, the USB gadget, networkd, and Dropbear, and disables getty so the USB serial port is the demo CLI. Fails the build if the binary or unit file is missing. |
 | `external/board/post-image.sh` | Assembles the SD card image. The boot partition is FAT32 and starts at 4 MiB, which is the layout the Pi boot ROM reads. |
 | `.github/workflows/image.yml` | test → build image (downloads and ccache are cached) → keep the latest `main` artifact → publish a release on `v*` tags and drop older release images. Pull requests do not upload the image. |
 
