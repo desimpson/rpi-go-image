@@ -1,0 +1,6 @@
+/buildroot/
+/output/
+/dist/
+/external/board/overlay/usr/bin/myapp
+/dl/
+/.ccache/

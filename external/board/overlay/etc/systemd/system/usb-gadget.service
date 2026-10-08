@@ -1,0 +1,13 @@
+[Unit]
+Description=USB OTG serial and Ethernet
+DefaultDependencies=no
+After=local-fs.target systemd-modules-load.service
+Before=sysinit.target systemd-networkd.service serial-getty@ttyGS0.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/usb-gadget.sh
+
+[Install]
+WantedBy=sysinit.target

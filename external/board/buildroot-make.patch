@@ -1,0 +1,17 @@
+diff --git a/package/Makefile.in b/package/Makefile.in
+index 5ebb5f9b..23cd2c45 100644
+--- a/package/Makefile.in
++++ b/package/Makefile.in
+@@ -20,8 +20,10 @@ endif
+ # Only build one job at a time, *and* to not randomise goals and
+ # prerequisites ordering in make 4.4+
+ MAKE1 := $(HOSTMAKE) -j1 $(if $(findstring --shuffle,$(MAKEFLAGS)),--shuffle=none)
+-override MAKE = $(HOSTMAKE) \
+-	$(if $(findstring j,$(filter-out --%,$(MAKEFLAGS))),,-j$(PARALLEL_JOBS))
++# MAKE is only the program path. OpenSSL 3.6 quotes "$(MAKE)", so a value
++# such as "/usr/bin/make -j8" or a trailing space is not an executable.
++# Parallel work comes from the -j flag on the Buildroot make command.
++override MAKE := $(HOSTMAKE)
+ 
+ ifeq ($(BR2_TOOLCHAIN_BUILDROOT),y)
+ TARGET_VENDOR = $(call qstrip,$(BR2_TOOLCHAIN_BUILDROOT_VENDOR))

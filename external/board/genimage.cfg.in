@@ -1,0 +1,31 @@
+# The Pi boot ROM reads the first MBR partition as FAT32. mkfs.fat would
+# otherwise make a 32-bit-typed volume that is actually FAT16, and a partition
+# that starts at sector 1. Neither is a layout this firmware reliably boots:
+# the ACT LED flickers and Linux never mounts the root filesystem.
+image boot.vfat {
+	vfat {
+		extraargs = "-F 32"
+		files = {
+#BOOT_FILES#
+		}
+	}
+
+	size = 64M
+}
+
+image sdcard.img {
+	hdimage {
+	}
+
+	partition boot {
+		partition-type = 0xC
+		bootable = "true"
+		offset = 4M
+		image = "boot.vfat"
+	}
+
+	partition rootfs {
+		partition-type = 0x83
+		image = "rootfs.ext4"
+	}
+}

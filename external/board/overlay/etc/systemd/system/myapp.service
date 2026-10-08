@@ -1,0 +1,11 @@
+[Unit]
+Description=MyApp demo Go service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/myapp
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,1 @@
+# No custom packages: the Go app is built outside Buildroot and added via the rootfs overlay.

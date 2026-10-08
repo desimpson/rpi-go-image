@@ -1,0 +1,2 @@
+name: MYBOARD
+desc: Minimal Raspberry Pi Zero image running a Go app under systemd

@@ -1,0 +1,157 @@
+name: image
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      clean:
+        description: Ignore the Buildroot cache and build from scratch
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: app/go.mod
+          cache-dependency-path: app/go.mod
+      - run: make test
+
+  image:
+    needs: test
+    runs-on: ubuntu-24.04
+    outputs:
+      artifact-id: ${{ steps.upload.outputs.artifact-id }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # for `git describe` version stamping
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: app/go.mod
+          cache-dependency-path: app/go.mod
+
+      - name: Install Buildroot host dependencies
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential libncurses-dev file cpio unzip rsync bc wget git python3
+
+      - name: Restore Buildroot cache
+        if: ${{ !inputs.clean }}
+        uses: actions/cache@v4
+        with:
+          path: |
+            dl
+            .ccache
+          key: br-${{ hashFiles('BUILDROOT_VERSION') }}-${{ hashFiles('external/configs/myboard_defconfig') }}
+          restore-keys: |
+            br-${{ hashFiles('BUILDROOT_VERSION') }}-
+
+      - name: Build image
+        env:
+          BR2_DL_DIR: ${{ github.workspace }}/dl
+          BR2_CCACHE_DIR: ${{ github.workspace }}/.ccache
+        run: |
+          mkdir -p "$BR2_DL_DIR" "$BR2_CCACHE_DIR"
+          make dist
+
+      - uses: actions/upload-artifact@v4
+        id: upload
+        if: github.event_name != 'pull_request'
+        with:
+          name: sdcard-image
+          path: dist/*
+          if-no-files-found: error
+          compression-level: 0 # already xz-compressed
+          retention-days: 90
+
+  # Deletes older sdcard-image artifacts. Pull requests never upload one.
+  # A newer artifact from a run that finished first is left alone.
+  retain:
+    needs: image
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    permissions:
+      actions: write
+      contents: read
+    steps:
+      - name: Delete older image artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CURRENT_ID: ${{ needs.image.outputs.artifact-id }}
+        run: |
+          set -eu
+          if [ -z "$CURRENT_ID" ]; then
+            echo "image job did not publish an artifact id" >&2
+            exit 1
+          fi
+          created=$(gh api "repos/${{ github.repository }}/actions/artifacts/${CURRENT_ID}" --jq .created_at)
+          gh api --paginate "repos/${{ github.repository }}/actions/artifacts?name=sdcard-image&per_page=100" \
+            --jq '.artifacts[] | [.id, .created_at] | @tsv' > /tmp/artifacts.tsv
+          while IFS="$(printf '\t')" read -r id created_at; do
+            [ -z "$id" ] && continue
+            [ "$id" = "$CURRENT_ID" ] && continue
+            if [ "$created_at" \< "$created" ]; then
+              echo "deleting artifact ${id} from ${created_at}"
+              gh api -X DELETE "repos/${{ github.repository }}/actions/artifacts/${id}"
+            fi
+          done < /tmp/artifacts.tsv
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [image, retain]
+    runs-on: ubuntu-24.04
+    permissions:
+      actions: write
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: sdcard-image
+          path: dist
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
+      - name: Drop images from older releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          current="${GITHUB_REF_NAME}"
+          gh release list --limit 200 --json tagName,isDraft \
+            --jq '.[] | select(.isDraft | not) | .tagName' > /tmp/tags.txt
+          while read -r tag; do
+            [ -z "$tag" ] && continue
+            [ "$tag" = "$current" ] && continue
+            gh release view "$tag" --json assets --jq '.assets[].name' > /tmp/assets.txt
+            while read -r name; do
+              [ -z "$name" ] && continue
+              case "$name" in
+                *.img.xz|*.sha256)
+                  echo "deleting ${tag} asset ${name}"
+                  gh release delete-asset "$tag" "$name" --yes
+                  ;;
+              esac
+            done < /tmp/assets.txt
+          done < /tmp/tags.txt
+      - name: Delete this run's image artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          gh api -X DELETE "repos/${{ github.repository }}/actions/artifacts/${{ needs.image.outputs.artifact-id }}"
